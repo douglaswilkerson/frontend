@@ -693,8 +693,7 @@
       e.preventDefault();
       const urlInput = $('#rewardUrl');
       const descInput = $('#rewardDesc');
-      const url = urlInput.value.trim();
-      const desc = descInput.value.trim();
+
 
       if (!url || !desc) {
         showToast('⚠️ Fill in both fields.', 'error');
