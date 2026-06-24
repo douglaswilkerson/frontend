@@ -688,32 +688,36 @@
       }
     }
 
-    // ── Referral form ──
-    async function handleReferralSubmit(e) {
-      e.preventDefault();
-      const urlInput = $('#rewardUrl');
-      const descInput = $('#rewardDesc');
+   // ── Referral form ──
+async function handleReferralSubmit(e) {
+  e.preventDefault();
+  const urlInput = $('#rewardUrl');
+  const descInput = $('#rewardDesc');
 
+  // 👇 Read the values from the inputs
+  const url = urlInput.value.trim();
+  const desc = descInput.value.trim();
 
-      if (!url || !desc) {
-        showToast('⚠️ Fill in both fields.', 'error');
-        return;
-      }
-      try { new URL(url); } catch {
-        showToast('⚠️ Invalid reward URL (include https://)', 'error');
-        return;
-      }
+  if (!url || !desc) {
+    showToast('⚠️ Fill in both fields.', 'error');
+    return;
+  }
+  try { new URL(url); } catch {
+    showToast('⚠️ Invalid reward URL (include https://)', 'error');
+    return;
+  }
 
-      const result = await createReferral(url, desc);
-      if (result) {
-        const displayLink = $('#referralLinkDisplay');
-        displayLink.textContent = result.referralLink;
-        document.getElementById('referralResult').style.display = 'flex';
-        urlInput.value = '';
-        descInput.value = '';
-        showToast('✅ Referral link created!', 'success');
-      }
-    }
+  const result = await createReferral(url, desc);
+  if (result) {
+    const displayLink = $('#referralLinkDisplay');
+    displayLink.textContent = result.referralLink;
+    document.getElementById('referralResult').style.display = 'flex';
+    // If you want to keep the fields populated, comment out these two lines:
+    // urlInput.value = '';
+    // descInput.value = '';
+    showToast('✅ Referral link created!', 'success');
+  }
+}
 
     // Copy referral link
     function copyReferralLink() {
