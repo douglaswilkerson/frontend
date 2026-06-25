@@ -131,6 +131,8 @@
     .btn-primary { background: #1a2639; color: #fff; }
     .btn-primary.enabled { background: #2a3a5e; box-shadow: 0 4px 14px rgba(42,58,94,0.25); }
     .btn-primary.enabled:hover:not(:disabled) { background: #1a2639; }
+    .btn-secondary { background: #6b7a8e; }
+    .btn-secondary:hover:not(:disabled) { background: #4a5a6e; }
     .form-status { font-size: 0.85rem; color: #5f6b7a; }
     .form-status .highlight { color: #c62828; font-weight: 600; }
     .form-status .success { color: #2e7d32; font-weight: 600; }
@@ -158,6 +160,13 @@
     }
     .referral-result .copy-btn:hover { background: #2a3a5e; }
 
+    .edit-link-area {
+      background: #e3f2fd; border: 2px solid #42a5f5; border-radius: 12px;
+      padding: 1rem; margin-top: 1rem; display: flex; flex-wrap: wrap; align-items: center; gap: 1rem;
+    }
+    .edit-link-area .label { font-weight: 600; color: #0d47a1; }
+    .edit-link-area .link { flex: 1; background: #fff; padding: 0.5rem 1rem; border-radius: 8px; word-break: break-all; font-family: monospace; border: 1px solid #90caf9; }
+
     .toast {
       position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(120px);
       background: #1a2639; color: #fff; padding: 0.8rem 1.8rem; border-radius: 40px;
@@ -178,6 +187,7 @@
       .link-item .time { width: 100%; padding-left: 2.4rem; }
       .form-actions { flex-direction: column; align-items: stretch; }
       .referral-result { flex-direction: column; align-items: stretch; text-align: center; }
+      .edit-link-area { flex-direction: column; align-items: stretch; text-align: center; }
     }
   </style>
 </head>
@@ -256,7 +266,7 @@
     <!-- ========== REFERRAL TAB ========== -->
     <div id="referralTab" class="tab-content">
       <div class="card">
-        <div class="card-title"><span class="emoji">🎯</span> Create a Referral Campaign</div>
+        <div class="card-title"><span class="emoji">🎯</span> Create / Edit a Referral Campaign</div>
         <p style="color:#5f6b7a; margin-bottom:1rem;">
           Set a reward link and description. We'll generate a unique referral link.
           Every <strong>50 clicks</strong> on your referral link will automatically
@@ -273,15 +283,23 @@
           </div>
           <div class="form-actions">
             <button type="submit" class="btn btn-primary" id="createReferralBtn">Save &amp; Generate</button>
+            <button type="button" class="btn btn-secondary" id="editReferralBtn" style="display:none;">✏️ Edit</button>
             <span class="form-status" id="referralStatus"></span>
           </div>
         </form>
 
-        <!-- Result area -->
+        <!-- Result area (referral link) -->
         <div id="referralResult" style="display:none;" class="referral-result">
           <span style="font-weight:600;">🔗 Your referral link:</span>
           <span class="link" id="referralLinkDisplay">-</span>
           <button class="copy-btn" id="copyReferralBtn">Copy</button>
+        </div>
+
+        <!-- Edit link area -->
+        <div id="editLinkArea" style="display:none;" class="edit-link-area">
+          <span class="label">✏️ Edit link (save this):</span>
+          <span class="link" id="editLinkDisplay">-</span>
+          <button class="copy-btn" id="copyEditBtn">Copy</button>
         </div>
       </div>
     </div>
@@ -294,7 +312,7 @@
     /* ─────────────────────────────────────────────────────────────
        BACKEND API BASE (change to your deployed URL)
     ───────────────────────────────────────────────────────────── */
-    const API_BASE = 'https://link-share-backend.onrender.com'; // ← update when deployed
+    const API_BASE = 'https://link-share-backend.onrender.com';
 
     /* ─────────────────────────────────────────────────────────────
        LOCAL STORAGE (client‑side unlock progress)
@@ -322,6 +340,10 @@
     let state = getUserState();
     let links = [];
     let blockStatus = { blocked: false, remainingSeconds: 0 };
+
+    // Referral edit state
+    let currentEditToken = null;
+    let currentReferralId = null;
 
     /* ─────────────────────────────────────────────────────────────
        HELPERS
@@ -353,9 +375,7 @@
     ───────────────────────────────────────────────────────────── */
     async function fetchLinks() {
       try {
-        const res = await fetch(`${API_BASE}/api/links`, {
-          credentials: 'include'
-        });
+        const res = await fetch(`${API_BASE}/api/links`, { credentials: 'include' });
         const data = await res.json();
         links = data.success ? data.links : [];
       } catch (err) {
@@ -367,9 +387,7 @@
 
     async function fetchBlockStatus() {
       try {
-        const res = await fetch(`${API_BASE}/api/block-status`, {
-          credentials: 'include'
-        });
+        const res = await fetch(`${API_BASE}/api/block-status`, { credentials: 'include' });
         const data = await res.json();
         blockStatus = data;
       } catch (err) {
@@ -432,6 +450,46 @@
       }
     }
 
+    async function updateReferral(token, rewardUrl, rewardDescription) {
+      try {
+        const res = await fetch(`${API_BASE}/api/referrals/${token}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ rewardUrl, rewardDescription }),
+        });
+        const data = await res.json();
+        if (!data.success) {
+          showToast('❌ ' + (data.error || 'Failed to update referral'), 'error');
+          return null;
+        }
+        return data.referral;
+      } catch (err) {
+        showToast('⚠️ Network error', 'error');
+        return null;
+      }
+    }
+
+    async function fetchReferralByEditToken(token) {
+      try {
+        const res = await fetch(`${API_BASE}/edit/${token}`, { credentials: 'include' });
+        if (!res.ok) {
+          if (res.status === 404) {
+            showToast('❌ Invalid edit link', 'error');
+          }
+          return null;
+        }
+        const data = await res.json();
+        if (data.success) {
+          return data.referral;
+        }
+        return null;
+      } catch (err) {
+        showToast('⚠️ Network error', 'error');
+        return null;
+      }
+    }
+
     // ── Record a referral action (called when user clicks 4 required items) ──
     async function recordReferralClick() {
       try {
@@ -441,12 +499,11 @@
         });
         const data = await res.json();
         if (data.posted && data.postedLink) {
-          // The referral just posted a reward – refresh the list
           showToast('🎉 A referral just posted a reward link!', 'success');
           await fetchLinks();
         }
       } catch (err) {
-        // Silently fail – we don't want to break the user experience
+        // Silently fail
       }
     }
 
@@ -594,10 +651,51 @@
     }
 
     /* ─────────────────────────────────────────────────────────────
+       REFERRAL FORM UI HELPERS
+    ───────────────────────────────────────────────────────────── */
+    function setReferralFormEnabled(enabled) {
+      const urlInput = $('#rewardUrl');
+      const descInput = $('#rewardDesc');
+      const submitBtn = $('#createReferralBtn');
+      const editBtn = $('#editReferralBtn');
+      urlInput.disabled = !enabled;
+      descInput.disabled = !enabled;
+      submitBtn.disabled = !enabled;
+      if (enabled) {
+        submitBtn.textContent = currentEditToken ? 'Update' : 'Save & Generate';
+        editBtn.style.display = 'none';
+      } else {
+        submitBtn.textContent = 'Saved';
+        editBtn.style.display = 'inline-block';
+      }
+    }
+
+    function showReferralResult(referralLink) {
+      const display = $('#referralLinkDisplay');
+      display.textContent = referralLink;
+      document.getElementById('referralResult').style.display = 'flex';
+    }
+
+    function showEditLink(editLink) {
+      const display = $('#editLinkDisplay');
+      display.textContent = editLink;
+      document.getElementById('editLinkArea').style.display = 'flex';
+    }
+
+    function hideReferralResults() {
+      document.getElementById('referralResult').style.display = 'none';
+      document.getElementById('editLinkArea').style.display = 'none';
+    }
+
+    function populateReferralForm(data) {
+      $('#rewardUrl').value = data.reward_url || '';
+      $('#rewardDesc').value = data.reward_description || '';
+    }
+
+    /* ─────────────────────────────────────────────────────────────
        ACTIONS
     ───────────────────────────────────────────────────────────── */
     function handleLinkClick(linkId, url) {
-      // ── Record the referral action first ──
       recordReferralClick();
 
       if (state.clickedLinkIds.includes(linkId)) {
@@ -626,7 +724,6 @@
     function handleSponsorClick(e) {
       e.preventDefault();
 
-      // ── Record the referral action first ──
       recordReferralClick();
 
       if (state.sponsorClicked) {
@@ -688,42 +785,85 @@
       }
     }
 
-   // ── Referral form ──
-async function handleReferralSubmit(e) {
-  e.preventDefault();
-  const urlInput = $('#rewardUrl');
-  const descInput = $('#rewardDesc');
+    // ── Referral form (create / update) ──
+    async function handleReferralSubmit(e) {
+      e.preventDefault();
+      const urlInput = $('#rewardUrl');
+      const descInput = $('#rewardDesc');
+      const url = urlInput.value.trim();
+      const desc = descInput.value.trim();
 
-  // 👇 Read the values from the inputs
-  const url = urlInput.value.trim();
-  const desc = descInput.value.trim();
+      if (!url || !desc) {
+        showToast('⚠️ Fill in both fields.', 'error');
+        return;
+      }
+      try { new URL(url); } catch {
+        showToast('⚠️ Invalid reward URL (include https://)', 'error');
+        return;
+      }
 
-  if (!url || !desc) {
-    showToast('⚠️ Fill in both fields.', 'error');
-    return;
-  }
-  try { new URL(url); } catch {
-    showToast('⚠️ Invalid reward URL (include https://)', 'error');
-    return;
-  }
+      if (currentEditToken) {
+        // Update existing referral
+        const result = await updateReferral(currentEditToken, url, desc);
+        if (result) {
+          showToast('✅ Referral updated!', 'success');
+          // Keep the form disabled, show edit link again
+          setReferralFormEnabled(false);
+          // Update the referral link display (slug remains same)
+          const baseUrl = window.location.origin; // or use API_BASE
+          const referralLink = `${API_BASE}/ref/${result.slug}`; // assuming slug returned
+          showReferralResult(referralLink);
+          // edit link stays the same
+        }
+      } else {
+        // Create new referral
+        const result = await createReferral(url, desc);
+        if (result) {
+          const displayLink = $('#referralLinkDisplay');
+          displayLink.textContent = result.referralLink;
+          document.getElementById('referralResult').style.display = 'flex';
 
-  const result = await createReferral(url, desc);
-  if (result) {
-    const displayLink = $('#referralLinkDisplay');
-    displayLink.textContent = result.referralLink;
-    document.getElementById('referralResult').style.display = 'flex';
-    // If you want to keep the fields populated, comment out these two lines:
-    // urlInput.value = '';
-    // descInput.value = '';
-    showToast('✅ Referral link created!', 'success');
-  }
-}
+          // Show edit link
+          const editLinkDisplay = $('#editLinkDisplay');
+          editLinkDisplay.textContent = result.editLink || `${API_BASE}/edit/${result.editToken}`;
+          document.getElementById('editLinkArea').style.display = 'flex';
 
-    // Copy referral link
+          // Disable form and show edit button
+          currentEditToken = result.editToken;
+          setReferralFormEnabled(false);
+
+          showToast('✅ Referral link created!', 'success');
+        }
+      }
+    }
+
+    // ── Edit button handler ──
+    function handleEditClick() {
+      setReferralFormEnabled(true);
+      // Focus on first field
+      $('#rewardUrl').focus();
+    }
+
+    // ── Copy functions ──
     function copyReferralLink() {
       const linkText = $('#referralLinkDisplay').textContent;
       navigator.clipboard.writeText(linkText).then(() => {
-        showToast('📋 Copied to clipboard!', 'success');
+        showToast('📋 Copied!', 'success');
+      }).catch(() => {
+        const el = document.createElement('textarea');
+        el.value = linkText;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        el.remove();
+        showToast('📋 Copied!', 'success');
+      });
+    }
+
+    function copyEditLink() {
+      const linkText = $('#editLinkDisplay').textContent;
+      navigator.clipboard.writeText(linkText).then(() => {
+        showToast('📋 Copied!', 'success');
       }).catch(() => {
         const el = document.createElement('textarea');
         el.value = linkText;
@@ -796,7 +936,27 @@ async function handleReferralSubmit(e) {
 
       // Referral form
       $('#referralForm').addEventListener('submit', handleReferralSubmit);
+      $('#editReferralBtn').addEventListener('click', handleEditClick);
       $('#copyReferralBtn').addEventListener('click', copyReferralLink);
+      $('#copyEditBtn').addEventListener('click', copyEditLink);
+
+      // Check for edit token in URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const editToken = urlParams.get('edit');
+      if (editToken) {
+        // Load referral data and populate form
+        const data = await fetchReferralByEditToken(editToken);
+        if (data) {
+          currentEditToken = editToken;
+          populateReferralForm(data);
+          setReferralFormEnabled(true);
+          // Change button text to "Update"
+          $('#createReferralBtn').textContent = 'Update';
+          // Hide any previous results
+          hideReferralResults();
+          showToast('✏️ Edit mode – update your referral details.', '');
+        }
+      }
 
       // Fetch data
       await fetchLinks();
