@@ -514,11 +514,63 @@
     const $$ = (sel) => document.querySelectorAll(sel);
 
     function renderLinks() {
-      const container = $('#linksList');
-      if (!links.length) {
-        container.innerHTML = `<div class="empty-message">No links shared yet. Be the first!</div>`;
-        return;
+  const container = $('#linksList');
+  
+  // If no links from API, show fallback links
+  if (!links.length) {
+    const fallbackLinks = [
+      { id: 'fallback1', url: 'https://example.com/1', description: 'Test link 1', timestamp: Date.now() - 1000000 },
+      { id: 'fallback2', url: 'https://example.com/2', description: 'Test link 2', timestamp: Date.now() - 2000000 },
+      { id: 'fallback3', url: 'https://example.com/3', description: 'Test link 3', timestamp: Date.now() - 3000000 }
+    ];
+    // Render fallback links using the same logic as real links
+    let html = '';
+    fallbackLinks.forEach(link => {
+      const isClicked = state.clickedLinkIds.includes(link.id);
+      const clickedClass = isClicked ? 'clicked' : '';
+      html += `
+        <div class="link-item ${clickedClass}" data-id="${link.id}">
+          <div class="click-badge">${isClicked ? '✓' : '○'}</div>
+          <div class="info">
+            <div class="desc">${escapeHtml(link.description)}</div>
+            <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener" class="url" data-id="${link.id}">
+              ${escapeHtml(link.url)}
+            </a>
+          </div>
+          <div class="time">${formatTime(link.timestamp)}</div>
+        </div>
+      `;
+    });
+    container.innerHTML = html;
+    
+    // Attach click listeners to fallback links
+    container.querySelectorAll('.link-item').forEach(el => {
+      const id = el.dataset.id;
+      const link = fallbackLinks.find(l => l.id === id);
+      if (!link) return;
+      el.addEventListener('click', (e) => {
+        if (blockStatus.blocked) {
+          window.open(link.url, '_blank', 'noopener');
+          showToast('⛔ Blocked. Clicks do not count.', 'error');
+          return;
+        }
+        handleLinkClick(id, link.url);
+      });
+      const anchor = el.querySelector('a.url');
+      if (anchor) {
+        anchor.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (blockStatus.blocked) {
+            window.open(link.url, '_blank', 'noopener');
+            showToast('⛔ Blocked. Clicks do not count.', 'error');
+            return;
+          }
+          handleLinkClick(id, link.url);
+        });
       }
+    });
+    return;
+  }
       let html = '';
       links.forEach(link => {
         const isClicked = state.clickedLinkIds.includes(link.id);
