@@ -385,17 +385,21 @@
       renderLinks();
     }
 
-    async function fetchBlockStatus() {
-      try {
-        const res = await fetch(`${API_BASE}/api/block-status`, { credentials: 'include' });
-        const data = await res.json();
-        blockStatus = data;
-      } catch (err) {
-        console.error('Block status error:', err);
-        blockStatus = { blocked: false, remainingSeconds: 0 };
-      }
-      renderProgress();
+async function fetchBlockStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/api/block-status`, { credentials: 'include' });
+    const data = await res.json();
+    // Cap to 24 hours
+    if (data.remainingSeconds > 86400) {
+      data.remainingSeconds = 86400;
     }
+    blockStatus = data;
+  } catch (err) {
+    console.error('Block status error:', err);
+    blockStatus = { blocked: false, remainingSeconds: 0 };
+  }
+  renderProgress();
+}
 
     async function submitLink(url, description) {
       try {
